@@ -1,6 +1,0 @@
-aiogram>=3.31.0
-Google-GenAI>=1.40.0
-python-dotenv>=1.0.1
-aiosqlite>=0.21.0
-aiohttp>=3.12.0
-Pillow>=11.0.0
