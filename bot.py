@@ -9,11 +9,13 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from google import genai
 from google.genai import types
+from aiohttp import web
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("8678558934:AAEvRbK3j7zRA_JeSSf2nDy35eq1P5HiKcU")
-GEMINI_API_KEY = os.getenv("AQ.Ab8RN6JA9_yzvTfB5wRJUGi3aL3eHlQ66kvS6CAO7CrUrcX0BQ")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DB_NAME = "ai_assistant.db"
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
@@ -325,11 +327,56 @@ async def text_handler(message: Message):
         )
 
 
-async def main():
+WEBHOOK_PATH = "/webhook"
+
+
+async def on_startup(bot_instance: Bot):
+    base_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_BASE_URL")
+    if not base_url:
+        raise RuntimeError(
+            "RENDER_EXTERNAL_URL topilmadi. Render Web Service URLsi mavjud bo‘lishi kerak."
+        )
+
+    webhook_url = f"{base_url.rstrip('/')}{WEBHOOK_PATH}"
+    await bot_instance.set_webhook(
+        url=webhook_url,
+        drop_pending_updates=False,
+    )
+    print(f"✅ Webhook o‘rnatildi: {webhook_url}")
+
+
+async def on_shutdown(bot_instance: Bot):
+    await bot_instance.delete_webhook(drop_pending_updates=False)
+    print("🛑 Webhook o‘chirildi.")
+
+
+async def health(request):
+    return web.json_response({"status": "ok", "bot": "AI Telegram Yordamchi"})
+
+
+def main():
     init_db()
     print(f"🤖 AI Telegram bot ishga tushdi! Model: {MODEL}")
-    await dp.start_polling(bot)
+
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
+
+    app = web.Application()
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+
+    webhook_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        handle_in_background=True,
+    )
+    webhook_handler.register(app, path=WEBHOOK_PATH)
+
+    setup_application(app, dp, bot=bot)
+
+    port = int(os.getenv("PORT", "10000"))
+    web.run_app(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
